@@ -90,3 +90,7 @@ dependencies:
     version: "1.2.1"
     rules:
       - if: "$CONFIG{MUSE_BOARD_ID} == \"waveshare_s3_lcd7\""
+  espressif/esp_lcd_touch_gt1151:
+    version: "^1.1.1"
+    rules:
+      - if: "$CONFIG{MUSE_BOARD_ID} == \"espressif_s31_korvo_1\""

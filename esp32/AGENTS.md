@@ -71,6 +71,7 @@ before adding a feature to one.
 | VN ESP32-S3 1.83-inch NV3023 | `esp32s3` | `devices/sdkconfig.muse;devices/sdkconfig.muse-vn-s3-183` | `tools/muse/board.sh build vn183` |
 | Guition JC3248W535 | `esp32s3` | `devices/sdkconfig.muse;devices/sdkconfig.muse-guition-jc3248w535` | `tools/muse/board.sh build jc3248w535` |
 | Waveshare ESP32-S3-Touch-LCD-7 | `esp32s3` | `devices/sdkconfig.muse;devices/sdkconfig.muse-waveshare-s3-lcd7` | `tools/muse/board.sh build lcd7` |
+| Espressif ESP32-S31-Korvo-1 (ESP-IDF 6.1+) | `esp32s31` | `devices/sdkconfig.muse;devices/sdkconfig.muse-espressif-s31-korvo-1` | `tools/muse/board.sh build s31-korvo-1` |
 | M5Stack StickC Plus2 | `esp32` | `devices/sdkconfig.muse;devices/sdkconfig.muse-m5stack-stickc-plus2` | manual |
 | M5Stack Core2 (v1.0) | `esp32` | `devices/sdkconfig.muse;devices/sdkconfig.muse-m5stack-core2` | `tools/muse/board.sh build core2` |
 | FoloToy AI Passport (experimental) | `esp32c3` | `devices/sdkconfig.muse;devices/sdkconfig.muse-ai-passport` | `tools/muse/board.sh build ai-passport` |
@@ -130,7 +131,7 @@ voice note that Muse answers in the app, and the dial sets the speaker volume
 
 ### Boards with the full UI, by hand
 
-`tools/muse/board.sh build|flash <s3|s3n|s3-216|aipi|box3|c6|c6-206|watcher|sticks3|plus2|cardputer-adv|stopwatch|cores3|core2|jc3248w535|lcd7|vn183|ai-passport> [SERIAL|PORT]`
+`tools/muse/board.sh build|flash <s3|s3n|s3-216|aipi|box3|s31-korvo-1|c6|c6-206|watcher|sticks3|plus2|cardputer-adv|stopwatch|cores3|core2|jc3248w535|lcd7|vn183|ai-passport> [SERIAL|PORT]`
 builds one board in `build-muse-<profile>/`, logs to
 `/tmp/muse_build_<board>.log`, and clears `managed_components/` before and
 after so it doesn't clash with other boards. When flashing, it finds the
@@ -143,6 +144,11 @@ them. It finds ESP-IDF the way `tools/board.sh` does, trying
 `IDF_EXPORT` to its `export.sh`, e.g. in your shell profile:
 `export IDF_EXPORT=/path/to/esp-idf/export.sh`. `tools/muse/avatar.py` builds
 through `board.sh`, so it needs the same.
+
+The ESP32-S31-Korvo-1 is the exception to the repository-wide ESP-IDF 6.0.1
+baseline: the `esp32s31` target first appears in ESP-IDF 6.1. Set `IDF_EXPORT`
+to a 6.1-or-newer `export.sh` when building it. Other supported boards remain on
+6.0.1.
 
 For bench testing, `MUSE_BENCH=1 tools/muse/board.sh build|flash ...` adds
 `devices/sdkconfig.muse-bench` and uses `build-muse-<profile>-bench/`. That

@@ -59,6 +59,7 @@ ERROR_LINES = 60
 # muse_board->name, as "@status" reports it -> tools/muse/board.sh's name
 BOARDS = {
     "Espressif ESP32-S3-BOX-3": "box3",
+    "Espressif ESP32-S31-Korvo-1": "s31-korvo-1",
     "Waveshare ESP32-S3-Touch-AMOLED-1.75C": "s3",
     "Waveshare ESP32-S3-Touch-AMOLED-1.75": "s3n",
     "Waveshare ESP32-S3-Touch-AMOLED-2.16": "s3-216",
@@ -78,7 +79,7 @@ BOARDS = {
     "VN ESP32-S3 1.83-inch NV3023": "vn183",
     "FoloToy AI Passport": "ai-passport",
 }
-CHAT_BOARDS = ("s3", "s3n", "s3-216", "aipi", "box3", "sticks3", "watcher", "stopwatch", "cores3", "core2", "fnk0104b", "jc3248w535", "lcd7", "vn183")
+CHAT_BOARDS = ("s3", "s3n", "s3-216", "aipi", "box3", "s31-korvo-1", "sticks3", "watcher", "stopwatch", "cores3", "core2", "fnk0104b", "jc3248w535", "lcd7", "vn183")
 
 
 class Stop(Exception):

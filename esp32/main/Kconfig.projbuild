@@ -148,6 +148,7 @@ menu "ESP32 Device SDK"
     config HOMEHUB_BUTTON_GPIO
         int "Active-low setup/reset button GPIO"
         range 0 28 if IDF_TARGET_ESP32C5
+        range 0 72 if IDF_TARGET_ESP32S31
         range 0 48
         default 28 if IDF_TARGET_ESP32C5
         default 41

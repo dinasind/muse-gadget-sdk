@@ -14,7 +14,7 @@
 # limitations under the License.
 
 # Build or flash Home Link for one board:
-#   tools/muse/board.sh build|flash <s3|s3n|s3-216|aipi|box3|c6|c6-206|watcher|sticks3|plus2|cardputer-adv|stopwatch|cores3|core2|fnk0104b|jc3248w535|lcd7|vn183|ai-passport> [serial|port]
+#   tools/muse/board.sh build|flash <s3|s3n|s3-216|aipi|box3|s31-korvo-1|c6|c6-206|watcher|sticks3|plus2|cardputer-adv|stopwatch|cores3|core2|fnk0104b|jc3248w535|lcd7|vn183|ai-passport> [serial|port]
 # Build log: /tmp/muse_build_<board>.log. flash finds the board's port by its
 # USB device (tools/muse/ports.py); with several of a kind attached, pass the
 # one's USB serial number (the MAC on native USB) or its port. Flashing from a
@@ -23,7 +23,7 @@
 # flashes in build-muse-<profile>-bench/, so neither build's sdkconfig hides
 # the other's.
 set -uo pipefail
-cmd=${1:?build|flash}; board=${2:?s3|s3n|s3-216|aipi|box3|c6|c6-206|watcher|sticks3|plus2|cardputer-adv|stopwatch|cores3|core2|fnk0104b|jc3248w535|lcd7|vn183|ai-passport}
+cmd=${1:?build|flash}; board=${2:?s3|s3n|s3-216|aipi|box3|s31-korvo-1|c6|c6-206|watcher|sticks3|plus2|cardputer-adv|stopwatch|cores3|core2|fnk0104b|jc3248w535|lcd7|vn183|ai-passport}
 root=$(cd "$(dirname "$0")/../.." && pwd)
 case $board in
     s3)      profile=waveshare-s3-175c;    target=esp32s3 ;;
@@ -31,6 +31,7 @@ case $board in
     s3-216)  profile=waveshare-s3-216;     target=esp32s3 ;;
     aipi)    profile=aipi;                 target=esp32s3 ;;
     box3)    profile=espressif-box-3;       target=esp32s3 ;;
+    s31-korvo-1) profile=espressif-s31-korvo-1; target=esp32s31 ;;
     c6)      profile=waveshare-c6-18;      target=esp32c6 ;;
     c6-206)  profile=waveshare-c6-206;     target=esp32c6 ;;
     # Its CH342 bridge drops bytes when esptool sends a whole packet at once,
@@ -55,11 +56,20 @@ baud=${baud:-460800}
 if [ -n "${IDF_EXPORT:-}" ]; then
     . "$IDF_EXPORT" >/dev/null 2>&1
 elif ! command -v idf.py >/dev/null 2>&1; then
-    for d in "$HOME/.espressif/esp-idf-v6.0.1" "${IDF_PATH:-}" "$HOME/esp/esp-idf-v6.0.1" "$HOME/esp/esp-idf-v6" "$HOME/esp/esp-idf"; do
+    if [ "$target" = esp32s31 ]; then
+        idf_candidates=("$HOME/.espressif/v6.1/esp-idf" "${IDF_PATH:-}" "$HOME/esp/esp-idf-v6.1")
+    else
+        idf_candidates=("$HOME/.espressif/esp-idf-v6.0.1" "${IDF_PATH:-}" "$HOME/esp/esp-idf-v6.0.1" "$HOME/esp/esp-idf-v6" "$HOME/esp/esp-idf")
+    fi
+    for d in "${idf_candidates[@]}"; do
         [ -n "$d" ] && [ -f "$d/export.sh" ] && { . "$d/export.sh" >/dev/null 2>&1; break; }
     done
 fi
-command -v idf.py >/dev/null 2>&1 || { echo "idf.py not found; activate ESP-IDF v6.0.1 first" >&2; exit 1; }
+if ! command -v idf.py >/dev/null 2>&1; then
+    [ "$target" = esp32s31 ] && required="6.1 or newer" || required="6.0.1"
+    echo "idf.py not found; activate ESP-IDF $required first" >&2
+    exit 1
+fi
 cd "$root"
 B=build-muse-$profile
 defaults="sdkconfig.defaults;devices/sdkconfig.muse;devices/sdkconfig.muse-$profile"
