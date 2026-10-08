@@ -205,11 +205,47 @@ idf.py -B build-muse-espressif-s31-korvo-1 \
   -p /dev/cu.usbmodemXXXX monitor
 ```
 
+## RGB 双缓冲与防撕裂
+
+LCD 保持 **16 MHz PCLK** 和每块 8 行的 bounce buffer。两个 RGB565
+PSRAM 帧缓冲共占 1,536,000 字节，比单缓冲增加 768,000 字节（750 KiB）。
+LVGL 使用 DIRECT 双缓冲；IDF 启动时扫描 fb0，因此 LVGL 从 fb1 开始绘制。
+两个缓冲由驱动分配并清零，不在扫描启动后重写 fb0。
+
+只在 LVGL 最后一个脏区域完成后提交整帧。提交后清除旧 task notification，
+等待两次 `on_frame_buf_complete`，再调用 `lv_display_flush_ready`，让 LVGL
+同步脏区域并复用旧前台缓冲。这里不使用 VSYNC 或 `on_color_trans_done`
+作为复用条件：IDF 6.1 RGB 驱动的 `lcd_rgb_panel_fill_bounce_buffer()`
+先锁定下一帧的源缓冲，再调用完成回调；跨核延迟的第一个回调可能仍对应
+提交前的选择，第二个边界才保证已释放旧缓冲。等待时不再提交新帧。
+
+这一保守同步会增加约 1～2 个刷新周期的等待（当前时序约 26 ms/周期），
+实际 UI 帧率需在硬件上确认。它解决的是同时扫描和写入同一帧缓冲的撕裂，
+不保证消除 PSRAM 带宽不足或中断延迟造成的 underrun。完成事件停止时，
+UI 会保持等待而不是冒险重写扫描中的缓冲。
+
+本实现核对了 IDF 6.1 的 `components/esp_lcd/rgb/esp_lcd_panel_rgb.c` 和
+`examples/peripherals/lcd/rgb_panel/main/rgb_lcd_example_main.c`；升级 IDF
+或关闭 bounce buffer 时必须重新核对完成事件语义。
+
+主机回归（不运行固件构建）：
+
+```sh
+cd esp32
+python3 -m unittest discover -s tests -p 'test_s31_rgb_flush.py' -v
+```
+
+该测试编译实际 flush/ISR 回调，模拟旧通知、跨核延迟回调、提交期间回调、
+合并通知、多脏区域与连续翻页；不能替代实机显示验证。
+
 ## Hardware verification
 
 After flashing, verify these paths on the physical board:
 
-1. LCD orientation, RGB565 colors and stable refresh without underruns.
+1. LCD orientation, RGB565 colors and stable refresh without underruns. Check
+   moving high-contrast edges, avatar animation and rapid settings navigation for
+   tearing, including the first frame after boot and display off/on. Repeat during
+   Wi-Fi traffic and audio playback/capture; check logs for LCD underruns or stalls.
 2. Touch coordinates and touch-based settings navigation.
 3. BOOT push-to-talk and physical pairing confirmation.
 4. Both microphones capture intelligible 16 kHz audio.

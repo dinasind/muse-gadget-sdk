@@ -13,11 +13,10 @@
  * esp-dev-kits factory demo and board schematic. ESP32-S31 requires ESP-IDF
  * 6.1 or newer.
  */
-#include <string.h>
-
 #include "driver/gpio.h"
 #include "driver/i2c_master.h"
 #include "driver/i2s_std.h"
+#include "esp_attr.h"
 #include "esp_check.h"
 #include "esp_codec_dev_defaults.h"
 #include "esp_lcd_panel_io.h"
@@ -79,6 +78,17 @@ static esp_err_t init(void)
     return ESP_OK;
 }
 
+static bool IRAM_ATTR frame_buf_complete(esp_lcd_panel_handle_t panel,
+                                         const esp_lcd_rgb_panel_event_data_t *event,
+                                         void *user_ctx)
+{
+    (void)panel;
+    (void)event;
+    BaseType_t wake = pdFALSE;
+    vTaskNotifyGiveFromISR((TaskHandle_t)user_ctx, &wake);
+    return wake == pdTRUE;
+}
+
 static esp_err_t panel_start(void)
 {
     const esp_lcd_rgb_panel_config_t cfg = {
@@ -98,7 +108,7 @@ static esp_err_t panel_start(void)
         .data_width = 16,
         .in_color_format = LCD_COLOR_FMT_RGB565,
         .out_color_format = LCD_COLOR_FMT_RGB565,
-        .num_fbs = 1,
+        .num_fbs = 2,
         /* Eight lines is stable on the reference board and limits internal SRAM use. */
         .bounce_buffer_size_px = LCD_W * 8,
         .dma_burst_size = 64,
@@ -116,6 +126,11 @@ static esp_err_t panel_start(void)
         .flags.fb_in_psram = true,
     };
     ESP_RETURN_ON_ERROR(esp_lcd_new_rgb_panel(&cfg, &s_panel), TAG, "RGB panel");
+    const esp_lcd_rgb_panel_event_callbacks_t cbs = {
+        .on_frame_buf_complete = frame_buf_complete,
+    };
+    ESP_RETURN_ON_ERROR(esp_lcd_rgb_panel_register_event_callbacks(
+                            s_panel, &cbs, xTaskGetCurrentTaskHandle()), TAG, "RGB callbacks");
     return esp_lcd_panel_init(s_panel);
 }
 
@@ -143,8 +158,22 @@ static uint32_t tick_ms(void)
 static void flush(lv_display_t *disp, const lv_area_t *area, uint8_t *px)
 {
     (void)area;
-    (void)px;
-    /* LVGL renders directly into the RGB controller's continuously scanned FB. */
+    if (lv_display_flush_is_last(disp)) {
+        ESP_ERROR_CHECK(esp_lcd_panel_draw_bitmap(s_panel, 0, 0, LCD_W, LCD_H, px));
+        /* IDF 6.1 lcd_rgb_panel_fill_bounce_buffer() latches cur_fb_index BEFORE
+         * on_frame_buf_complete. A callback already in flight on the other core
+         * can therefore still describe the OLD selection. Discard notifications
+         * after submission, then wait for TWO boundaries: even if the first was
+         * in flight, the second has latched our buffer. No further submission
+         * occurs while waiting. VSYNC/on_color_trans_done are not release fences.
+         * Notification slot 0 belongs exclusively to this LVGL task's RGB fence.
+         */
+        ulTaskNotifyTake(pdTRUE, 0);
+        ulTaskNotifyTake(pdFALSE, portMAX_DELAY);
+        ulTaskNotifyTake(pdFALSE, portMAX_DELAY);
+    }
+    /* Keep LVGL's direct-mode dirty-area copy and next render off the old front
+     * buffer until the bounce-buffer reader has released it. */
     lv_display_flush_ready(disp);
 }
 
@@ -175,17 +204,19 @@ static esp_err_t display_init(void)
     ESP_RETURN_ON_ERROR(panel_start(), TAG, "panel");
     ESP_RETURN_ON_ERROR(touch_start(), TAG, "touch");
 
-    void *fb = NULL;
-    ESP_RETURN_ON_ERROR(esp_lcd_rgb_panel_get_frame_buffer(s_panel, 1, &fb), TAG, "frame buffer");
-    ESP_RETURN_ON_FALSE(fb, ESP_ERR_NO_MEM, TAG, "no frame buffer");
-    memset(fb, 0, LCD_W * LCD_H * 2);
+    void *fb0 = NULL;
+    void *fb1 = NULL;
+    ESP_RETURN_ON_ERROR(esp_lcd_rgb_panel_get_frame_buffer(s_panel, 2, &fb0, &fb1), TAG, "frame buffers");
+    ESP_RETURN_ON_FALSE(fb0 && fb1, ESP_ERR_NO_MEM, TAG, "no frame buffers");
+    /* IDF zero-initializes both buffers and starts scanning fb0. Do not clear
+     * the live buffer here; LVGL must render its first frame into fb1. */
 
     lv_init();
     lv_tick_set_cb(tick_ms);
     s_disp = lv_display_create(LCD_W, LCD_H);
     ESP_RETURN_ON_FALSE(s_disp, ESP_ERR_NO_MEM, TAG, "LVGL display");
     lv_display_set_color_format(s_disp, LV_COLOR_FORMAT_RGB565);
-    lv_display_set_buffers(s_disp, fb, NULL, LCD_W * LCD_H * 2, LV_DISPLAY_RENDER_MODE_DIRECT);
+    lv_display_set_buffers(s_disp, fb1, fb0, LCD_W * LCD_H * 2, LV_DISPLAY_RENDER_MODE_DIRECT);
     lv_display_set_flush_cb(s_disp, flush);
 
     s_indev = lv_indev_create();
@@ -200,6 +231,11 @@ static void lvgl_task(void *arg)
 {
     (void)arg;
     s_start_err = display_init();
+    if (s_start_err != ESP_OK && s_panel) {
+        /* Stop DMA callbacks before deleting their notification target. */
+        ESP_ERROR_CHECK(esp_lcd_panel_del(s_panel));
+        s_panel = NULL;
+    }
     xSemaphoreGive(s_started);
     if (s_start_err != ESP_OK) {
         vTaskDelete(NULL);
